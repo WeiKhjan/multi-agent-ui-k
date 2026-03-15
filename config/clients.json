@@ -1,0 +1,22 @@
+[
+  {
+    "id": "sample-client-1",
+    "name": "Kilat Sejadi Sdn Bhd",
+    "aliases": ["Kilat Sejadi", "KSSB"],
+    "industry": "money lending",
+    "contacts": [
+      { "name": "Ahmad bin Ismail", "role": "director" },
+      { "name": "Siti Nurhaliza binti Abdullah", "role": "accountant" }
+    ]
+  },
+  {
+    "id": "sample-client-2",
+    "name": "Maju Jaya Industries Sdn Bhd",
+    "aliases": ["Maju Jaya", "MJI"],
+    "industry": "manufacturing",
+    "contacts": [
+      { "name": "Tan Ah Kow", "role": "director" },
+      { "name": "Lim Mei Ling", "role": "finance_manager" }
+    ]
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "sample-client-1": {
+    "roundAmounts": false,
+    "maskRevenue": false,
+    "additionalPatterns": [],
+    "notes": "Money lending — standard masking rules apply"
+  },
+  "sample-client-2": {
+    "roundAmounts": false,
+    "maskRevenue": true,
+    "additionalPatterns": [],
+    "notes": "Private company — mask revenue figures"
+  }
+}

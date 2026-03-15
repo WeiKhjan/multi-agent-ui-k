@@ -1,0 +1,8 @@
+node_modules/
+.env
+.env.brain
+db/*.sqlite
+files/
+*.log
+.DS_Store
+plan.md

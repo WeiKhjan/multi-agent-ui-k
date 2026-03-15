@@ -1,0 +1,37 @@
+{
+  "server": {
+    "port": 3000,
+    "host": "0.0.0.0"
+  },
+  "database": {
+    "path": "./db/uik.sqlite"
+  },
+  "masking": {
+    "enabled": true,
+    "strictMode": true,
+    "roundAmounts": false,
+    "maskRevenue": false
+  },
+  "agents": {
+    "vault": {
+      "id": "vault_agent",
+      "name": "Agent_K-Vault",
+      "ollamaUrl": "http://localhost:11434",
+      "thinkingModel": "qwen3:32b",
+      "fastModel": "qwen3:8b"
+    },
+    "brain": {
+      "id": "brain_agent",
+      "name": "Agent_K-Brain",
+      "defaultModel": "sonnet"
+    }
+  },
+  "files": {
+    "maxUploadSize": 52428800,
+    "blockedExtensions": [".exe", ".bat", ".cmd", ".sh", ".ps1"]
+  },
+  "messages": {
+    "defaultPageSize": 50,
+    "maxPageSize": 200
+  }
+}

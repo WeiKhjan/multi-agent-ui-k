@@ -1,0 +1,31 @@
+{
+  "name": "multi-agent-ui-k",
+  "version": "1.0.0",
+  "description": "Multi-Agent UI_K: Vault & Reasoning — self-hosted multi-agent chat platform for accounting professionals",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "DEV_MODE=true node server/index.js",
+    "init-db": "node scripts/init-db.js",
+    "vault": "node agents/vault/index.js",
+    "brain": "node agents/brain/index.js"
+  },
+  "keywords": ["multi-agent", "chat", "accounting", "data-masking", "vault"],
+  "author": "Wei Khjan",
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jose": "^5.9.6",
+    "multer": "^1.4.5-lts.1",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "uuid": "^11.0.5"
+  },
+  "optionalDependencies": {
+    "@anthropic-ai/sdk": "^0.39.0"
+  }
+}
