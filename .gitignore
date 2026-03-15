@@ -2,6 +2,8 @@ node_modules/
 .env
 .env.brain
 db/*.sqlite
+db/*.sqlite-shm
+db/*.sqlite-wal
 files/
 *.log
 .DS_Store
