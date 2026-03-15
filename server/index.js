@@ -12,7 +12,7 @@ const { authMiddleware, socketAuthMiddleware } = require('./auth');
 const RoomManager = require('./rooms');
 const MessageHandler = require('./messages');
 const AgentManager = require('./agents');
-const { upload, serveFile, handleUpload } = require('./files');
+const { upload, serveFile, handleUpload, FILE_ROOT } = require('./files');
 
 // --- Database ---
 const dbPath = process.env.DB_PATH || path.join(__dirname, '..', 'db', 'uik.sqlite');
@@ -30,6 +30,16 @@ const app = express();
 const server = createServer(app);
 
 app.use(express.json());
+
+// Security headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // --- Auth Middleware (HTTP) ---
@@ -54,9 +64,14 @@ app.get('/api/rooms/:id/messages', auth, (req, res) => {
     return res.status(403).json({ error: 'Access denied' });
   }
 
+  const room = roomManager.getRoom(roomId);
+  // Only return unmasked content to humans in vault/client rooms (never to Brain agent)
+  const includeUnmasked = req.user.agentType !== 'brain' &&
+    (room.type === 'vault' || room.type === 'client');
+
   const limit = Math.min(parseInt(req.query.limit) || 50, 200);
   const offset = parseInt(req.query.offset) || 0;
-  const messages = messageHandler.getMessages(roomId, limit, offset);
+  const messages = messageHandler.getMessages(roomId, limit, offset, { includeUnmasked });
   res.json(messages);
 });
 
@@ -91,7 +106,10 @@ app.post('/api/rooms/:id/members', auth, (req, res) => {
   }
 
   try {
-    roomManager.addMember(req.params.id, userId, role);
+    // Resolve agentType if adding an agent — enforce Brain room restrictions
+    const agent = agentManager.getAgent(userId);
+    const agentType = agent ? agent.type : null;
+    roomManager.addMember(req.params.id, userId, role, agentType);
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -111,18 +129,40 @@ app.get('/api/rooms/:id/search', auth, (req, res) => {
   }
   const query = req.query.q;
   if (!query) return res.json([]);
-  const results = messageHandler.searchMessages(roomId, query);
+  const room = roomManager.getRoom(roomId);
+  const includeUnmasked = req.user.agentType !== 'brain' &&
+    (room && (room.type === 'vault' || room.type === 'client'));
+  const results = messageHandler.searchMessages(roomId, query, 20, { includeUnmasked });
   res.json(results);
 });
 
-// File serving
-app.get('/api/files/*', auth, serveFile);
+// File serving — with room-level access check
+app.get('/api/files/*', auth, (req, res, next) => {
+  // Extract roomId from file path (files are stored as /roomId/filename)
+  const filePath = req.params[0] || '';
+  const roomId = filePath.split('/')[0];
+  if (roomId && !roomManager.canAccess(roomId, req.user.id, req.user.agentType)) {
+    return res.status(403).json({ error: 'Access denied to this file' });
+  }
+  next();
+}, serveFile);
 
-// File upload
-app.post('/api/rooms/:roomId/upload', auth, upload.single('file'), handleUpload);
+// File upload — with room access check
+app.post('/api/rooms/:roomId/upload', auth, (req, res, next) => {
+  const roomId = req.params.roomId;
+  if (!roomManager.canAccess(roomId, req.user.id, req.user.agentType)) {
+    return res.status(403).json({ error: 'Access denied to this room' });
+  }
+  next();
+}, upload.single('file'), handleUpload);
 
-// Health check
+// Health check — basic status only (no agent details without auth)
 app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime() });
+});
+
+// Detailed health (authenticated)
+app.get('/api/health/details', auth, (req, res) => {
   res.json({
     status: 'ok',
     agents: agentManager.listAgents(),
@@ -132,7 +172,9 @@ app.get('/api/health', (req, res) => {
 
 // --- Socket.IO ---
 const io = new Server(server, {
-  cors: { origin: '*' },
+  cors: {
+    origin: process.env.CORS_ORIGIN || (process.env.DEV_MODE === 'true' ? '*' : false)
+  },
   maxHttpBufferSize: 1e7 // 10MB
 });
 
@@ -238,6 +280,7 @@ io.on('connection', (socket) => {
 
   // Typing indicator
   socket.on('typing', ({ roomId }) => {
+    if (!roomManager.canAccess(roomId, user.id, user.agentType)) return;
     socket.to(roomId).emit('typing', {
       roomId,
       senderId: user.id,
@@ -255,6 +298,12 @@ io.on('connection', (socket) => {
   // Task request (human → agent)
   socket.on('request_task', ({ roomId, taskType, parameters }) => {
     if (!roomId || !taskType) return;
+
+    // Verify room access
+    if (!roomManager.canAccess(roomId, user.id, user.agentType)) {
+      socket.emit('error_msg', { error: 'Access denied' });
+      return;
+    }
 
     const task = db.prepare(`
       INSERT INTO tasks (room_id, requested_by, assigned_agent, task_type, parameters)
@@ -276,23 +325,27 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Task result (agent → room)
+  // Task result (agent → room) — agent can only update tasks assigned to it
   socket.on('task_result', ({ taskId, status, result }) => {
     if (!socket.isAgent) return;
 
+    // Verify this task is assigned to this agent
+    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
+    if (!task || task.assigned_agent !== user.id) {
+      socket.emit('error_msg', { error: 'Task not assigned to this agent' });
+      return;
+    }
+
     db.prepare(`
       UPDATE tasks SET status = ?, result_summary = ?, completed_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(status, result, taskId);
+      WHERE id = ? AND assigned_agent = ?
+    `).run(status, result, taskId, user.id);
 
-    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
-    if (task) {
-      io.to(task.room_id).emit('task_update', {
-        taskId,
-        status,
-        result
-      });
-    }
+    io.to(task.room_id).emit('task_update', {
+      taskId,
+      status,
+      result
+    });
   });
 
   // Disconnect

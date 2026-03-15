@@ -1,6 +1,7 @@
 'use strict';
 
 const { createRemoteJWKSet, jwtVerify } = require('jose');
+const crypto = require('crypto');
 
 let jwks = null;
 
@@ -23,7 +24,7 @@ function authMiddleware(db) {
     // DEV_MODE bypass
     if (process.env.DEV_MODE === 'true') {
       req.user = {
-        id: process.env.DEV_USER_EMAIL || 'dev-user',
+        id: 'dev-user',
         email: process.env.DEV_USER_EMAIL || 'dev@localhost',
         display_name: process.env.DEV_USER_NAME || 'Developer',
         role: process.env.DEV_USER_ROLE || 'owner'
@@ -99,7 +100,7 @@ function socketAuthMiddleware(db) {
         brain_agent: process.env.BRAIN_AGENT_API_KEY
       };
 
-      if (validKeys[agentId] && validKeys[agentId] === agentKey) {
+      if (validKeys[agentId] && _timingSafeEqual(validKeys[agentId], agentKey)) {
         const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(agentId);
         if (agent) {
           socket.user = {
@@ -156,6 +157,17 @@ function _ensureUser(db, user) {
       VALUES (?, ?, ?, ?)
     `).run(user.id || user.email, user.email, user.display_name, user.role || 'staff');
   }
+}
+
+/**
+ * Timing-safe string comparison to prevent timing attacks on API keys.
+ */
+function _timingSafeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
 }
 
 module.exports = { authMiddleware, socketAuthMiddleware, initJWKS };

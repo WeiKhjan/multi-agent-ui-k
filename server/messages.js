@@ -100,18 +100,41 @@ class MessageHandler {
 
   /**
    * Get messages for a room (paginated, newest first).
-   * For shared rooms: returns masked content.
-   * For vault/client rooms: returns unmasked content (only to authorized users).
+   * SECURITY: Strips content_unmasked unless caller is authorized for real data.
+   * @param {string} roomId
+   * @param {number} limit
+   * @param {number} offset
+   * @param {Object} options - { includeUnmasked: bool }
    */
-  getMessages(roomId, limit = 50, offset = 0) {
-    return this.stmtGetMessages.all(roomId, limit, offset).reverse();
+  getMessages(roomId, limit = 50, offset = 0, options = {}) {
+    const rows = this.stmtGetMessages.all(roomId, limit, offset).reverse();
+    if (!options.includeUnmasked) {
+      return rows.map(r => this._stripUnmasked(r));
+    }
+    return rows;
   }
 
   /**
    * Search messages in a room.
+   * SECURITY: Strips content_unmasked unless caller is authorized.
    */
-  searchMessages(roomId, query, limit = 20) {
-    return this.stmtSearch.all(roomId, `%${query}%`, limit);
+  searchMessages(roomId, query, limit = 20, options = {}) {
+    // Escape LIKE wildcards in user input
+    const safeQuery = query.replace(/[%_]/g, '\\$&');
+    const rows = this.stmtSearch.all(roomId, `%${safeQuery}%`, limit);
+    if (!options.includeUnmasked) {
+      return rows.map(r => this._stripUnmasked(r));
+    }
+    return rows;
+  }
+
+  /**
+   * Strip content_unmasked and file_path from a message row.
+   * Only masked content is safe to return to untrusted callers.
+   */
+  _stripUnmasked(row) {
+    const { content_unmasked, file_path, ...safe } = row;
+    return safe;
   }
 
   /**

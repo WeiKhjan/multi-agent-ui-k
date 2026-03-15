@@ -37,8 +37,12 @@ const upload = multer({
   storage,
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max
   fileFilter(req, file, cb) {
-    // Block executable files
-    const blocked = ['.exe', '.bat', '.cmd', '.sh', '.ps1'];
+    // Block executable and script files
+    const blocked = [
+      '.exe', '.bat', '.cmd', '.sh', '.ps1', '.msi', '.com',
+      '.vbs', '.vbe', '.wsf', '.wsh', '.scr', '.pif',
+      '.jar', '.cgi', '.dll', '.so', '.dylib'
+    ];
     const ext = path.extname(file.originalname).toLowerCase();
     if (blocked.includes(ext)) {
       return cb(new Error('File type not allowed'));
